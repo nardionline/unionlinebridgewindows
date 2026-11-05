@@ -121,7 +121,7 @@ public sealed class MainForm : Form
             var r = doc.PrinterSettings.DefaultPageSettings.PrinterResolution;
             var sb = new System.Text.StringBuilder();
             sb.AppendLine($"Printeri: {doc.PrinterSettings.PrinterName}");
-            sb.AppendLine($"Driveri: {doc.PrinterSettings.DriverName}");
+            sb.AppendLine($"Printeri i Windows: {doc.PrinterSettings.PrinterName}");
             sb.AppendLine($"Formati i kërkuar: {widthBox.Value} × {heightBox.Value} mm");
             sb.AppendLine($"Formati i pranuar: {ps.PaperSize.PaperName} ({ps.PaperSize.Width} × {ps.PaperSize.Height} / 1-100 inch)");
             sb.AppendLine($"Rezolucioni: {r.X} × {r.Y} DPI ({r.Kind})");
