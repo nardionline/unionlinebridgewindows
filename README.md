@@ -1,5 +1,7 @@
 # Unionline Print Bridge (Windows)
 
+Version: 1.1.0 — no local key; origin-restricted loopback endpoint.
+
 Windows desktop agent for local label printing through an installed Windows printer driver. The project is configured for GitHub Actions so the EXE can be built online.
 
 ## Build online with GitHub Actions
@@ -18,17 +20,16 @@ The workflow also runs automatically after pushes to `main` that change source o
 2. Start the Bridge and select the installed printer.
 3. Set label width and height (default 40 × 30 mm).
 4. Set the physical gap value for reference. The actual gap/sensor calibration is controlled by the printer's driver/Printing Preferences and printer media calibration; it is not universally configurable through Windows PrintDocument.
-5. Generate/copy the local key and keep it private.
-6. Click **Printo etiketë test**. Confirm the driver accepts the custom paper size and calibrate the stock in Printing Preferences if necessary.
+5. Click **Printo etiketë test**. Confirm the driver accepts the custom paper size and calibrate the stock in Printing Preferences if necessary.
 7. Click **Nis shërbimin lokal** to accept print requests from the Unionline website.
 
-## Local HTTP endpoint
+## Local HTTP endpoint (no local key)
 
-- URL: `http://127.0.0.1:8765/print`
-- Method: `POST`
-- Header: `X-Unionline-Key: <key shown in Bridge>`
+- Status URL: `http://127.0.0.1:8765/status` (GET)
+- Print URL: `http://127.0.0.1:8765/print` (POST)
 - Content-Type: `application/json`
 - Allowed web origins: `https://ebaumarket.com`, `https://www.ebaumarket.com`
+- No `X-Unionline-Key` header is required. The app checks the browser Origin and listens only on `127.0.0.1`.
 
 Example body:
 
@@ -46,7 +47,7 @@ Example body:
 }
 ```
 
-The local endpoint binds only to `127.0.0.1`; it is not exposed on the LAN or internet. Do not publish the local key. The Bridge currently accepts and queues the request to the Windows print spooler; the response means accepted, not proof that physical labels have emerged.
+The local endpoint binds only to `127.0.0.1`; it is not exposed on the LAN or internet. Origin checking and CORS are browser protections, not strong authentication: a local program on the same PC can still contact the endpoint. The Bridge currently accepts and queues the request to the Windows print spooler; the response means accepted, not proof that physical labels have emerged.
 
 ## Important current limitations
 
@@ -54,4 +55,4 @@ The local endpoint binds only to `127.0.0.1`; it is not exposed on the LAN or in
 - Generic Windows drivers differ. Some ignore custom `PaperSize` values unless the matching stock size is created/selected in Printing Preferences.
 - Gap calibration is printer/driver-specific. Configure label sensing and gap in the printer's driver; the numeric Gap field is currently informational.
 - Barcode rendering is not yet implemented in this first scaffold: the barcode value is currently printed as text. Do not use this build for production barcode labels until barcode graphics and a physical test are completed.
-- The web module still needs its matching JavaScript change to POST the selected print list to this endpoint and a safe way to provision the local key to each workstation. That integration is a separate next step.
+- The web module still needs its matching JavaScript change to POST the selected print list to this endpoint. That integration is a separate next step.
