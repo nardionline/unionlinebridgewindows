@@ -21,7 +21,7 @@ public sealed class MainForm : Form
     private readonly NumericUpDown gapBox = new() { Minimum = 0, Maximum = 20, Value = 2, DecimalPlaces = 1, Increment = 0.5M, Width = 90 };
     private readonly Label status = new() { AutoSize = true, Text = "Bridge nuk është nisur." };
     private readonly Button startButton = new() { Text = "Nis shërbimin lokal", AutoSize = true };
-    private readonly Button testButton = new() { Text = "Printo 1 etiketë test", AutoSize = true };
+    private readonly Button testButton = new() { Text = "Testo kornizën 40×30", AutoSize = true };
     private readonly Button infoButton = new() { Text = "Kontrollo parametrat", AutoSize = true };
     private HttpListener? listener; private CancellationTokenSource? cts;
     private const int Port = 8765;
@@ -43,7 +43,7 @@ public sealed class MainForm : Form
             Text="Pa çelës lokal. Dëgjon vetëm në 127.0.0.1. Barkodi gjenerohet grafikisht Code 128. GAP-i fizik konfigurohet te driver-i." };
         root.Controls.Add(note,0,7); root.SetColumnSpan(note,2);
         LoadPrinters();
-        testButton.Click+=(_,_)=>PrintJobs(new(){new LabelJob{Name="Unionline Test",Price="4,990 L",Code="TR-10025",Barcode="123456789012",Quantity=1}});
+        testButton.Click+=(_,_)=>PrintCalibrationLabel();
         infoButton.Click+=(_,_)=>ShowPrinterDiagnostics();
         startButton.Click+=async(_,_)=>await ToggleServer(); FormClosing+=(_,_)=>StopServer();
     }
@@ -90,7 +90,7 @@ public sealed class MainForm : Form
             if(ctx.Request.Headers["Access-Control-Request-Private-Network"]=="true")ctx.Response.Headers["Access-Control-Allow-Private-Network"]="true";
             if(ctx.Request.HttpMethod=="OPTIONS"){ctx.Response.StatusCode=204;ctx.Response.Close();return;}
             if(ctx.Request.HttpMethod=="GET"&&ctx.Request.Url?.AbsolutePath=="/status")
-            {await Reply(ctx,200,new{ok=true,service="Unionline Print Bridge",version="1.2.3",printer=printerBox.SelectedItem?.ToString()??""});return;}
+            {await Reply(ctx,200,new{ok=true,service="Unionline Print Bridge",version="1.2.5",printer=printerBox.SelectedItem?.ToString()??""});return;}
             if(ctx.Request.HttpMethod!="POST"||ctx.Request.Url?.AbsolutePath!="/print"){await Reply(ctx,404,new{ok=false,error="Not found"});return;}
             using var reader=new StreamReader(ctx.Request.InputStream,ctx.Request.ContentEncoding);
             var req=JsonSerializer.Deserialize<PrintRequest>(await reader.ReadToEndAsync(),new JsonSerializerOptions{PropertyNameCaseInsensitive=true});
@@ -195,6 +195,69 @@ public sealed class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show("Printimi u ndal për siguri: " + ex.Message,
+                "Unionline Print Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private void PrintCalibrationLabel()
+    {
+        try
+        {
+            if (printerBox.SelectedItem == null) throw new InvalidOperationException("Zgjidh printerin.");
+            using var doc = new PrintDocument();
+            doc.PrinterSettings.PrinterName = printerBox.SelectedItem.ToString()!;
+            if (!doc.PrinterSettings.IsValid) throw new InvalidOperationException("Printeri nuk është i disponueshëm.");
+
+            // PaperSize dimensions are in hundredths of an inch: 157 × 118 ≈ 40 × 30 mm.
+            doc.DefaultPageSettings.PaperSize = new PaperSize(
+                $"Unionline_{widthBox.Value}x{heightBox.Value}mm",
+                MmToHundredthsInch((double)widthBox.Value),
+                MmToHundredthsInch((double)heightBox.Value));
+            doc.DefaultPageSettings.Margins = new Margins(0, 0, 0, 0);
+            doc.DefaultPageSettings.Landscape = false;
+            doc.OriginAtMargins = false;
+            doc.PrintController = new StandardPrintController();
+
+            doc.PrintPage += (_, e) =>
+            {
+                var g = e.Graphics!;
+                var state = g.Save();
+                try
+                {
+                    g.PageUnit = GraphicsUnit.Pixel;
+                    g.PageScale = 1f;
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+
+                    float dpiX = g.DpiX > 0 ? g.DpiX : 203f;
+                    float dpiY = g.DpiY > 0 ? g.DpiY : 203f;
+                    float w = (float)widthBox.Value / 25.4f * dpiX;
+                    float h = (float)heightBox.Value / 25.4f * dpiY;
+
+                    // Calibration mark only: inset frame + diagonals + small corner marks.
+                    // It deliberately contains no barcode or text to isolate graphics output.
+                    using var pen = new Pen(Color.Black, Math.Max(1f, dpiX / 203f));
+                    using var font = new Font("Arial", 7f, FontStyle.Bold, GraphicsUnit.Pixel);
+                    using var brush = new SolidBrush(Color.Black);
+
+                    g.SetClip(new RectangleF(0, 0, w, h));
+                    float inset = Math.Max(3f, dpiX * 0.35f / 25.4f);
+                    g.DrawRectangle(pen, inset, inset, w - 2 * inset, h - 2 * inset);
+                    g.DrawLine(pen, inset, inset, w - inset, h - inset);
+                    g.DrawLine(pen, w - inset, inset, inset, h - inset);
+                    float mark = Math.Max(4f, dpiX * 0.8f / 25.4f);
+                    g.FillRectangle(brush, inset, inset, mark, mark);
+                    g.FillRectangle(brush, w - inset - mark, h - inset - mark, mark, mark);
+                }
+                finally { g.Restore(state); }
+                e.HasMorePages = false;
+            };
+
+            doc.Print();
+            status.Text = "U dërgua vetëm 1 etiketë kalibrimi 40 × 30 mm.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Testi u ndal: " + ex.Message,
                 "Unionline Print Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
