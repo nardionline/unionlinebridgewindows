@@ -25,6 +25,7 @@ public sealed class MainForm : Form
     private readonly Label status = new() { AutoSize = true, Text = "Bridge nuk është nisur." };
     private readonly Button startButton = new() { Text = "Nis shërbimin lokal", AutoSize = true };
     private readonly Button testButton = new() { Text = "Testo kornizën 40×30", AutoSize = true };
+    private readonly Button previewButton = new() { Text = "Parapamje etikete (test)", AutoSize = true };
     private readonly Button infoButton = new() { Text = "Kontrollo parametrat", AutoSize = true };
     private HttpListener? listener; private CancellationTokenSource? cts;
     private const int Port = 8765;
@@ -33,20 +34,28 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Unionline Print Bridge"; Width = 580; Height = 410; MinimumSize = new Size(580,410);
+        Text = "Unionline Print Bridge"; Width = 720; Height = 430; MinimumSize = new Size(680,430);
         StartPosition = FormStartPosition.CenterScreen; Font = new Font("Segoe UI",9F);
         var root = new TableLayoutPanel { Dock=DockStyle.Fill, Padding=new Padding(18), ColumnCount=2, RowCount=8 };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,125)); root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100)); Controls.Add(root);
         AddRow(root,0,"Printeri",printerBox);
         var refresh=new Button { Text="Rifresko printerët",AutoSize=true }; refresh.Click+=(_,_)=>LoadPrinters(); AddRow(root,1,"",refresh);
         AddRow(root,2,"Gjerësia (mm)",widthBox); AddRow(root,3,"Lartësia (mm)",heightBox); AddRow(root,4,"Gap (mm)",gapBox);
-        var buttons=new FlowLayoutPanel { AutoSize=true,Dock=DockStyle.Fill }; buttons.Controls.Add(testButton); buttons.Controls.Add(infoButton); buttons.Controls.Add(startButton); AddRow(root,5,"Veprime",buttons);
+        var buttons=new FlowLayoutPanel { AutoSize=true,Dock=DockStyle.Fill }; buttons.Controls.Add(testButton); buttons.Controls.Add(previewButton); buttons.Controls.Add(infoButton); buttons.Controls.Add(startButton); AddRow(root,5,"Veprime",buttons);
         root.Controls.Add(status,0,6); root.SetColumnSpan(status,2);
         var note=new Label { AutoSize=true,MaximumSize=new Size(510,0),ForeColor=Color.DimGray,
             Text="Pa çelës lokal. Dëgjon vetëm në 127.0.0.1. Barkodi gjenerohet grafikisht Code 128. GAP-i fizik konfigurohet te driver-i." };
         root.Controls.Add(note,0,7); root.SetColumnSpan(note,2);
         LoadPrinters();
         testButton.Click+=(_,_)=>PrintCalibrationLabel();
+        previewButton.Click+=(_,_)=>CreateAndOpenPreview(new LabelJob
+        {
+            Name = "TRAPANO ELEKTRIK 750W",
+            Price = "4,990 L",
+            Code = "TR-10025",
+            Barcode = "123456789012",
+            Quantity = 1
+        });
         infoButton.Click+=(_,_)=>ShowPrinterDiagnostics();
         startButton.Click+=async(_,_)=>await ToggleServer(); FormClosing+=(_,_)=>StopServer();
     }
@@ -93,7 +102,7 @@ public sealed class MainForm : Form
             if(ctx.Request.Headers["Access-Control-Request-Private-Network"]=="true")ctx.Response.Headers["Access-Control-Allow-Private-Network"]="true";
             if(ctx.Request.HttpMethod=="OPTIONS"){ctx.Response.StatusCode=204;ctx.Response.Close();return;}
             if(ctx.Request.HttpMethod=="GET"&&ctx.Request.Url?.AbsolutePath=="/status")
-            {await Reply(ctx,200,new{ok=true,service="Unionline Print Bridge",version="1.3.0",printer=printerBox.SelectedItem?.ToString()??""});return;}
+            {await Reply(ctx,200,new{ok=true,service="Unionline Print Bridge",version="1.3.2",printer=printerBox.SelectedItem?.ToString()??""});return;}
             string path = ctx.Request.Url?.AbsolutePath ?? "";
             if(ctx.Request.HttpMethod!="POST"||(path!="/print"&&path!="/preview")){await Reply(ctx,404,new{ok=false,error="Not found"});return;}
             using var reader=new StreamReader(ctx.Request.InputStream,ctx.Request.ContentEncoding);

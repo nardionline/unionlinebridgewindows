@@ -1,4 +1,4 @@
-# Unionline Print Bridge Windows v1.3.0
+# Unionline Print Bridge Windows v1.3.2
 - Rregullim i layout-it: e gjithë etiketa vizatohet fillimisht në një bitmap me rezolucion 203 DPI dhe pastaj vendoset në një faqe fizike të vetme sipas `PageBounds`.
 - Test label: Unionline Test / 4,990 L / TR-10025 / barkod grafik Code 128.
 - Layout 40 × 30 mm: titull majtas, vijë ndarëse, çmim djathtas, kod dhe barkod.
@@ -42,3 +42,10 @@ Shënim: CORS/Origin nuk është autentikim i fortë kundër programeve të tjer
 - PDF ruhet te `%LOCALAPPDATA%\\UnionlinePrintBridge\\Previews` dhe hapet automatikisht në programin PDF të Windows.
 - Nuk kryen printim automatik. Përdoruesi kontrollon parapamjen dhe shtyp Print nga PDF viewer.
 - `labels.php` duhet të dërgojë POST te `/preview` kur përdoruesi zgjedh Parapamje. Integrimi i faqes online nuk përfshihet në këtë ZIP.
+
+\n## v1.3.2 – Parapamje test nga EXE
+- Shtohet butoni "Parapamje etikete (test)" në ndërfaqen Windows.
+- Nuk kërkon Unionline, internet apo të dhëna reale.
+- Përdor të dhëna shembull: TRAPANO ELEKTRIK 750W, 4,990 L, TR-10025 dhe barkod 123456789012.
+- Hap PDF me faqe fizike 40 × 30 mm; përdoruesi e kontrollon dhe vendos vetë nëse do ta printojë.
+- Butoni ekzistues "Testo kornizën 40×30" mbetet i pandryshuar dhe vazhdon të printojë vetëm kornizën e kalibrimit.
