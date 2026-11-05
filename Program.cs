@@ -119,31 +119,86 @@ public sealed class MainForm : Form
         catch(Exception ex){MessageBox.Show("Gabim printimi: "+ex.Message,"Unionline Print Bridge",MessageBoxButtons.OK,MessageBoxIcon.Error);}
     }
     private static int MmToHundredthsInch(double mm)=>(int)Math.Round(mm/25.4*100);
-    private static void DrawLabel(Graphics g,Rectangle page,LabelJob j)
+    private static void DrawLabel(Graphics printerGraphics, Rectangle page, LabelJob j)
     {
-        // Use PageBounds directly; MarginBounds can be empty on some thermal printer drivers.
-        g.PageUnit=GraphicsUnit.Display;g.PageScale=1f;
-        float x=page.Left+3.5f,y=page.Top+3f,w=Math.Max(10,page.Width-7f),h=Math.Max(10,page.Height-6f);
-        using var black=new SolidBrush(Color.Black);using var titleFont=new Font("Arial",7.2f,FontStyle.Bold,GraphicsUnit.Point);
-        using var priceFont=new Font("Arial",15f,FontStyle.Bold,GraphicsUnit.Point);using var codeFont=new Font("Arial",8.2f,FontStyle.Bold,GraphicsUnit.Point);
-        using var digitFont=new Font("Arial",6f);using var pen=new Pen(Color.Black,0.65f);
-        var titleRect=new RectangleF(x,y,w,h*0.25f);
-        using var titleFmt=new StringFormat(StringFormatFlags.LineLimit){Alignment=StringAlignment.Near,LineAlignment=StringAlignment.Near,Trimming=StringTrimming.EllipsisCharacter};
-        g.DrawString(j.Name??"",titleFont,black,titleRect,titleFmt);
-        float lineY=y+h*0.265f;g.DrawLine(pen,x,lineY,x+w,lineY);
-        using var right=new StringFormat{Alignment=StringAlignment.Far,LineAlignment=StringAlignment.Center,Trimming=StringTrimming.EllipsisCharacter};
-        g.DrawString(j.Price??"",priceFont,black,new RectangleF(x,lineY+h*.025f,w,h*.29f),right);
-        g.DrawString(j.Code??"",codeFont,black,new RectangleF(x,lineY+h*.315f,w,h*.16f),right);
-        string value=string.IsNullOrWhiteSpace(j.Barcode)?j.Code:j.Barcode;
-        if(!string.IsNullOrWhiteSpace(value))
+        // Render the complete label to a fixed-resolution bitmap first.
+        // This avoids mixing printer Graphics units (1/100 inch) with point-based fonts,
+        // which can cause content to spill onto following labels on some Windows drivers.
+        const float dpi = 203f; // common thermal-printer resolution; final image is fitted to the media.
+        int pixelWidth = Math.Max(80, (int)Math.Round(page.Width * dpi / 100f));
+        int pixelHeight = Math.Max(60, (int)Math.Round(page.Height * dpi / 100f));
+
+        using var label = new Bitmap(pixelWidth, pixelHeight, PixelFormat.Format24bppRgb);
+        label.SetResolution(dpi, dpi);
+        using (var g = Graphics.FromImage(label))
         {
-            float by=y+h*.61f,bh=h*.31f;
-            using var barcode=CreateBarcode(value,Math.Max(180,(int)(w*4)),Math.Max(35,(int)(bh*4)));
-            float tw=Math.Min(w*.92f,barcode.Width/4f),th=Math.Min(bh,barcode.Height/4f);
-            g.DrawImage(barcode,new RectangleF(x+(w-tw)/2f,by,tw,th));
-            using var center=new StringFormat{Alignment=StringAlignment.Center,LineAlignment=StringAlignment.Center,Trimming=StringTrimming.EllipsisCharacter};
-            g.DrawString(value,digitFont,black,new RectangleF(x,y+h*.925f,w,h*.07f),center);
+            g.Clear(Color.White);
+            g.PageUnit = GraphicsUnit.Pixel;
+            g.PageScale = 1f;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.SingleBitPerPixelGridFit;
+
+            float x = pixelWidth * 0.055f;
+            float y = pixelHeight * 0.075f;
+            float w = pixelWidth * 0.89f;
+            float h = pixelHeight * 0.85f;
+
+            using var black = new SolidBrush(Color.Black);
+            using var titleFont = new Font("Arial", Math.Max(10f, dpi * 7.2f / 72f), FontStyle.Bold, GraphicsUnit.Pixel);
+            using var priceFont = new Font("Arial", Math.Max(18f, dpi * 15f / 72f), FontStyle.Bold, GraphicsUnit.Pixel);
+            using var codeFont = new Font("Arial", Math.Max(11f, dpi * 8.2f / 72f), FontStyle.Bold, GraphicsUnit.Pixel);
+            using var digitFont = new Font("Arial", Math.Max(9f, dpi * 6f / 72f), FontStyle.Regular, GraphicsUnit.Pixel);
+            using var pen = new Pen(Color.Black, Math.Max(1f, dpi / 300f));
+
+            var titleRect = new RectangleF(x, y, w, h * 0.25f);
+            using var titleFmt = new StringFormat(StringFormatFlags.LineLimit)
+            {
+                Alignment = StringAlignment.Near,
+                LineAlignment = StringAlignment.Near,
+                Trimming = StringTrimming.EllipsisCharacter
+            };
+            g.DrawString(j.Name ?? "", titleFont, black, titleRect, titleFmt);
+
+            float lineY = y + h * 0.265f;
+            g.DrawLine(pen, x, lineY, x + w, lineY);
+
+            using var right = new StringFormat
+            {
+                Alignment = StringAlignment.Far,
+                LineAlignment = StringAlignment.Center,
+                Trimming = StringTrimming.EllipsisCharacter
+            };
+            g.DrawString(j.Price ?? "", priceFont, black,
+                new RectangleF(x, lineY + h * 0.025f, w, h * 0.29f), right);
+            g.DrawString(j.Code ?? "", codeFont, black,
+                new RectangleF(x, lineY + h * 0.315f, w, h * 0.16f), right);
+
+            string value = string.IsNullOrWhiteSpace(j.Barcode) ? j.Code : j.Barcode;
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                float by = y + h * 0.61f;
+                float bh = h * 0.31f;
+                using var barcode = CreateBarcode(value, Math.Max(180, (int)(w * 0.95f)), Math.Max(35, (int)bh));
+                float tw = Math.Min(w * 0.92f, barcode.Width);
+                float th = Math.Min(bh, barcode.Height);
+                g.DrawImage(barcode, new RectangleF(x + (w - tw) / 2f, by, tw, th));
+
+                using var center = new StringFormat
+                {
+                    Alignment = StringAlignment.Center,
+                    LineAlignment = StringAlignment.Center,
+                    Trimming = StringTrimming.EllipsisCharacter
+                };
+                g.DrawString(value, digitFont, black,
+                    new RectangleF(x, y + h * 0.925f, w, h * 0.075f), center);
+            }
         }
+
+        // PageBounds is expressed in hundredths of an inch by PrintDocument.
+        // Draw one finished bitmap over exactly one physical page/label.
+        printerGraphics.PageUnit = GraphicsUnit.Display;
+        printerGraphics.PageScale = 1f;
+        printerGraphics.DrawImage(label, page);
     }
     private static Bitmap CreateBarcode(string value,int width,int height)
     {
