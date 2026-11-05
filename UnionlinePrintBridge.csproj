@@ -1,11 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>UnionlinePrintBridge</AssemblyName>
-    <RootNamespace>UnionlinePrintBridge</RootNamespace>
-  </PropertyGroup>
+<PropertyGroup>
+<OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
+<UseWindowsForms>true</UseWindowsForms><UseSystemDrawing>true</UseSystemDrawing>
+<Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+<AssemblyName>UnionlinePrintBridge</AssemblyName><RootNamespace>UnionlinePrintBridge</RootNamespace>
+</PropertyGroup>
+<ItemGroup><PackageReference Include="ZXing.Net" Version="0.16.9" /></ItemGroup>
 </Project>
