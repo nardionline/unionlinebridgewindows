@@ -1,4 +1,4 @@
-# Unionline Print Bridge Windows v1.2.5
+# Unionline Print Bridge Windows v1.3.0
 - Rregullim i layout-it: e gjithë etiketa vizatohet fillimisht në një bitmap me rezolucion 203 DPI dhe pastaj vendoset në një faqe fizike të vetme sipas `PageBounds`.
 - Test label: Unionline Test / 4,990 L / TR-10025 / barkod grafik Code 128.
 - Layout 40 × 30 mm: titull majtas, vijë ndarëse, çmim djathtas, kod dhe barkod.
@@ -33,3 +33,12 @@ Shënim: CORS/Origin nuk është autentikim i fortë kundër programeve të tjer
 - One physical label maximum per click.
 - Use this to isolate driver/page geometry before enabling the full product label layout.
 - Note: `PaperSize.Width` and `PaperSize.Height` are in hundredths of an inch. Values around 157 × 118 correspond to approximately 40 × 30 mm, not 157 × 118 mm.
+
+
+## v1.3.0 – PDF preview para printimit
+- Shton endpoint-in `POST http://127.0.0.1:8765/preview`.
+- Merr të njëjtin JSON si `/print`, por pranon vetëm një etiketë për kërkesë gjatë fazës së testimit.
+- Krijon PDF me faqe fizike 40 × 30 mm, me emrin, vijën ndarëse, çmimin, kodin dhe barkodin real Code 128.
+- PDF ruhet te `%LOCALAPPDATA%\\UnionlinePrintBridge\\Previews` dhe hapet automatikisht në programin PDF të Windows.
+- Nuk kryen printim automatik. Përdoruesi kontrollon parapamjen dhe shtyp Print nga PDF viewer.
+- `labels.php` duhet të dërgojë POST te `/preview` kur përdoruesi zgjedh Parapamje. Integrimi i faqes online nuk përfshihet në këtë ZIP.

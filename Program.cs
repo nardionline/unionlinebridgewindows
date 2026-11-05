@@ -4,6 +4,9 @@ using System.Drawing.Printing;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Diagnostics;
+using PdfSharpCore.Drawing;
+using PdfSharpCore.Pdf;
 using System.Windows.Forms;
 using ZXing;
 using ZXing.Common;
@@ -90,20 +93,119 @@ public sealed class MainForm : Form
             if(ctx.Request.Headers["Access-Control-Request-Private-Network"]=="true")ctx.Response.Headers["Access-Control-Allow-Private-Network"]="true";
             if(ctx.Request.HttpMethod=="OPTIONS"){ctx.Response.StatusCode=204;ctx.Response.Close();return;}
             if(ctx.Request.HttpMethod=="GET"&&ctx.Request.Url?.AbsolutePath=="/status")
-            {await Reply(ctx,200,new{ok=true,service="Unionline Print Bridge",version="1.2.5",printer=printerBox.SelectedItem?.ToString()??""});return;}
-            if(ctx.Request.HttpMethod!="POST"||ctx.Request.Url?.AbsolutePath!="/print"){await Reply(ctx,404,new{ok=false,error="Not found"});return;}
+            {await Reply(ctx,200,new{ok=true,service="Unionline Print Bridge",version="1.3.0",printer=printerBox.SelectedItem?.ToString()??""});return;}
+            string path = ctx.Request.Url?.AbsolutePath ?? "";
+            if(ctx.Request.HttpMethod!="POST"||(path!="/print"&&path!="/preview")){await Reply(ctx,404,new{ok=false,error="Not found"});return;}
             using var reader=new StreamReader(ctx.Request.InputStream,ctx.Request.ContentEncoding);
             var req=JsonSerializer.Deserialize<PrintRequest>(await reader.ReadToEndAsync(),new JsonSerializerOptions{PropertyNameCaseInsensitive=true});
             if(req?.Items==null||req.Items.Count==0){await Reply(ctx,400,new{ok=false,error="Lista është bosh"});return;}
             if(req.Items.Count != 1 || req.Items.Any(x => x.Quantity > 1)) { await Reply(ctx, 400, new { ok=false, error="Testimi i sigurisë: lejohet vetëm 1 etiketë për kërkesë." }); return; }
             var jobs=req.Items.Select(i=>new LabelJob{Name=i.Name??"",Price=i.Price??"",Code=i.Code??"",Barcode=string.IsNullOrWhiteSpace(i.Barcode)?(i.Code??""):i.Barcode!,Quantity=1}).ToList();
             if(IsDisposed){await Reply(ctx,503,new{ok=false,error="Bridge is closing"});return;}
+            if(path=="/preview")
+            {
+                BeginInvoke(()=>CreateAndOpenPreview(jobs[0]));
+                await Reply(ctx,200,new{ok=true,accepted=1,message="PDF preview is being opened"});
+                return;
+            }
             BeginInvoke(()=>PrintJobs(jobs)); await Reply(ctx,200,new{ok=true,accepted=jobs.Sum(x=>x.Quantity),message="Print job accepted"});
         }
         catch(Exception ex){try{await Reply(ctx,500,new{ok=false,error=ex.Message});}catch{}}
     }
     private static async Task Reply(HttpListenerContext ctx,int code,object data)
     {var bytes=JsonSerializer.SerializeToUtf8Bytes(data);ctx.Response.StatusCode=code;ctx.Response.ContentType="application/json; charset=utf-8";ctx.Response.ContentLength64=bytes.Length;await ctx.Response.OutputStream.WriteAsync(bytes);ctx.Response.Close();}
+
+
+    // Creates a real 40 x 30 mm PDF, then opens it in the Windows default PDF viewer.
+    // Printing is deliberately left to the user after checking the preview.
+    private void CreateAndOpenPreview(LabelJob job)
+    {
+        try
+        {
+            string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "UnionlinePrintBridge", "Previews");
+            Directory.CreateDirectory(folder);
+            string file = Path.Combine(folder, $"Unionline_Label_{DateTime.Now:yyyyMMdd_HHmmss_fff}.pdf");
+            using (var document = new PdfDocument())
+            {
+                document.Info.Title = "Unionline - Preview etikete";
+                var page = document.AddPage();
+                page.Width = XUnit.FromMillimeter(40);
+                page.Height = XUnit.FromMillimeter(30);
+                using (var gfx = XGraphics.FromPdfPage(page))
+                {
+                    double mm = 72.0 / 25.4;
+                    XFont titleFont = new XFont("Arial", 6.1, XFontStyle.Bold);
+                    XFont priceFont = new XFont("Arial", 11.5, XFontStyle.Bold);
+                    XFont codeFont = new XFont("Arial", 6.0, XFontStyle.Bold);
+                    XFont digitsFont = new XFont("Arial", 4.4, XFontStyle.Regular);
+                    XBrush black = XBrushes.Black;
+
+                    // Product name: at most two lines, matching the approved label layout.
+                    string[] titleLines = WrapPreviewText(job.Name ?? "", titleFont, gfx, 36.4 * mm, 2);
+                    for (int i = 0; i < titleLines.Length; i++)
+                        gfx.DrawString(titleLines[i], titleFont, black,
+                            new XRect(1.8 * mm, (0.8 + i * 3.1) * mm, 36.4 * mm, 3.0 * mm),
+                            XStringFormats.TopLeft);
+
+                    gfx.DrawLine(new XPen(XColors.Black, 0.5), 1.8 * mm, 7.7 * mm, 38.2 * mm, 7.7 * mm);
+                    gfx.DrawString(job.Price ?? "", priceFont, black,
+                        new XRect(1.8 * mm, 8.0 * mm, 36.4 * mm, 7.0 * mm), XStringFormats.CenterRight);
+                    gfx.DrawString(job.Code ?? "", codeFont, black,
+                        new XRect(1.8 * mm, 15.0 * mm, 36.4 * mm, 4.0 * mm), XStringFormats.CenterRight);
+
+                    string barcodeValue = string.IsNullOrWhiteSpace(job.Barcode) ? (job.Code ?? "") : job.Barcode;
+                    if (!string.IsNullOrWhiteSpace(barcodeValue))
+                    {
+                        using var barcode = CreateBarcode(barcodeValue, 700, 120);
+                        using var stream = new MemoryStream();
+                        barcode.Save(stream, ImageFormat.Png);
+                        stream.Position = 0;
+                        using var image = XImage.FromStream(() => new MemoryStream(stream.ToArray()));
+                        gfx.DrawImage(image, 2.8 * mm, 19.2 * mm, 34.4 * mm, 7.0 * mm);
+                        gfx.DrawString(barcodeValue, digitsFont, black,
+                            new XRect(1.8 * mm, 26.2 * mm, 36.4 * mm, 2.4 * mm), XStringFormats.Center);
+                    }
+                }
+                document.Save(file);
+            }
+            Process.Start(new ProcessStartInfo(file) { UseShellExecute = true });
+            status.Text = "U hap parapamja PDF 40 × 30 mm. Kontrolloje dhe printoje nga PDF viewer.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Nuk u krijua parapamja PDF: " + ex.Message,
+                "Unionline Print Bridge", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private static string[] WrapPreviewText(string text, XFont font, XGraphics gfx, double maxWidth, int maxLines)
+    {
+        var words = (text ?? "").Split(new[] { ' ', '\\t', '\\r', '\\n' }, StringSplitOptions.RemoveEmptyEntries);
+        var lines = new List<string>();
+        string current = "";
+        foreach (var word in words)
+        {
+            string candidate = current.Length == 0 ? word : current + " " + word;
+            if (gfx.MeasureString(candidate, font).Width <= maxWidth)
+                current = candidate;
+            else
+            {
+                if (current.Length > 0) lines.Add(current);
+                current = word;
+                if (lines.Count == maxLines) break;
+            }
+        }
+        if (lines.Count < maxLines && current.Length > 0) lines.Add(current);
+        if (lines.Count == maxLines && lines.Count > 0 && words.Length > 0)
+        {
+            string last = lines[^1];
+            while (last.Length > 1 && gfx.MeasureString(last + "…", font).Width > maxWidth)
+                last = last.Substring(0, last.Length - 1);
+            lines[^1] = last.TrimEnd() + "…";
+        }
+        return lines.ToArray();
+    }
 
     private void ShowPrinterDiagnostics()
     {
