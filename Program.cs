@@ -181,7 +181,7 @@ public sealed class MainForm : Form
 
     private static string[] WrapPreviewText(string text, XFont font, XGraphics gfx, double maxWidth, int maxLines)
     {
-        var words = (text ?? "").Split(new[] { ' ', '\\t', '\\r', '\\n' }, StringSplitOptions.RemoveEmptyEntries);
+        var words = (text ?? "").Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
         var lines = new List<string>();
         string current = "";
         foreach (var word in words)
