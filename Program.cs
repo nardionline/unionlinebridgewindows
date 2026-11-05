@@ -88,7 +88,7 @@ public sealed class MainForm : Form
             if(ctx.Request.Headers["Access-Control-Request-Private-Network"]=="true")ctx.Response.Headers["Access-Control-Allow-Private-Network"]="true";
             if(ctx.Request.HttpMethod=="OPTIONS"){ctx.Response.StatusCode=204;ctx.Response.Close();return;}
             if(ctx.Request.HttpMethod=="GET"&&ctx.Request.Url?.AbsolutePath=="/status")
-            {await Reply(ctx,200,new{ok=true,service="Unionline Print Bridge",version="1.2.0",printer=printerBox.SelectedItem?.ToString()??""});return;}
+            {await Reply(ctx,200,new{ok=true,service="Unionline Print Bridge",version="1.2.2",printer=printerBox.SelectedItem?.ToString()??""});return;}
             if(ctx.Request.HttpMethod!="POST"||ctx.Request.Url?.AbsolutePath!="/print"){await Reply(ctx,404,new{ok=false,error="Not found"});return;}
             using var reader=new StreamReader(ctx.Request.InputStream,ctx.Request.ContentEncoding);
             var req=JsonSerializer.Deserialize<PrintRequest>(await reader.ReadToEndAsync(),new JsonSerializerOptions{PropertyNameCaseInsensitive=true});
@@ -110,11 +110,30 @@ public sealed class MainForm : Form
             using var doc=new PrintDocument();doc.PrinterSettings.PrinterName=printerBox.SelectedItem.ToString()!;
             if(!doc.PrinterSettings.IsValid)throw new InvalidOperationException("Printeri nuk është i disponueshëm.");
             int w=MmToHundredthsInch((double)widthBox.Value),h=MmToHundredthsInch((double)heightBox.Value);
-            doc.DefaultPageSettings.PaperSize=new PaperSize($"Unionline_{widthBox.Value}x{heightBox.Value}mm",w,h);
-            doc.DefaultPageSettings.Margins=new Margins(0,0,0,0);doc.OriginAtMargins=false;doc.PrintController=new StandardPrintController();
+            // Prefer a media size explicitly exposed by the selected driver. This is
+            // important for label printers: a made-up PaperSize can be ignored or
+            // mapped to the driver's default stock by some printer drivers.
+            PaperSize? matched = doc.PrinterSettings.PaperSizes
+                .Cast<PaperSize>()
+                .Where(p => Math.Abs(p.Width-w) <= 2 && Math.Abs(p.Height-h) <= 2)
+                .OrderBy(p => Math.Abs(p.Width-w) + Math.Abs(p.Height-h))
+                .FirstOrDefault();
+            var requested = matched ?? new PaperSize($"Unionline_{widthBox.Value}x{heightBox.Value}mm",w,h);
+            doc.DefaultPageSettings.PaperSize=requested;
+            doc.DefaultPageSettings.Landscape=false;
+            doc.DefaultPageSettings.Margins=new Margins(0,0,0,0);
+            doc.OriginAtMargins=false;
+            doc.PrintController=new StandardPrintController();
             var pages=jobs.SelectMany(j=>Enumerable.Repeat(j,j.Quantity)).ToList();int page=0;
-            doc.PrintPage+=(_,e)=>{DrawLabel(e.Graphics!,e.PageBounds,pages[page++]);e.HasMorePages=page<pages.Count;};
-            doc.Print();status.Text=$"U dërguan {pages.Count} etiketa te {doc.PrinterSettings.PrinterName}. Gap: {gapBox.Value} mm (driver).";
+            doc.PrintPage+=(_,e)=>
+            {
+                // Use the actual page bounds reported back by the driver, not the
+                // requested dimensions. Render exactly one label per returned page.
+                DrawLabel(e.Graphics!,e.PageBounds,pages[page++]);
+                e.HasMorePages=page<pages.Count;
+            };
+            doc.Print();
+            status.Text=$"U dërguan {pages.Count} etiketa te {doc.PrinterSettings.PrinterName}. Formati: {requested.Width/100.0*25.4:0.0}x{requested.Height/100.0*25.4:0.0} mm. Gap: {gapBox.Value} mm (driver).";
         }
         catch(Exception ex){MessageBox.Show("Gabim printimi: "+ex.Message,"Unionline Print Bridge",MessageBoxButtons.OK,MessageBoxIcon.Error);}
     }
@@ -196,8 +215,9 @@ public sealed class MainForm : Form
 
         // PageBounds is expressed in hundredths of an inch by PrintDocument.
         // Draw one finished bitmap over exactly one physical page/label.
-        printerGraphics.PageUnit = GraphicsUnit.Display;
+        printerGraphics.PageUnit = GraphicsUnit.Display; // 1/100 inch, same unit as PageBounds
         printerGraphics.PageScale = 1f;
+        printerGraphics.ResetTransform();
         printerGraphics.DrawImage(label, page);
     }
     private static Bitmap CreateBarcode(string value,int width,int height)

@@ -1,4 +1,4 @@
-# Unionline Print Bridge Windows v1.2.1
+# Unionline Print Bridge Windows v1.2.2
 - Rregullim i layout-it: e gjithë etiketa vizatohet fillimisht në një bitmap me rezolucion 203 DPI dhe pastaj vendoset në një faqe fizike të vetme sipas `PageBounds`.
 - Test label: Unionline Test / 4,990 L / TR-10025 / barkod grafik Code 128.
 - Layout 40 × 30 mm: titull majtas, vijë ndarëse, çmim djathtas, kod dhe barkod.
@@ -11,3 +11,4 @@ Artifact: `UnionlinePrintBridge-win-x64`.
 ## Shembull POST
 `{"items":[{"name":"Trapano 750W","price":"4,990 L","code":"TR-10025","barcode":"123456789012","quantity":1}]}`
 Shënim: CORS/Origin nuk është autentikim i fortë kundër programeve të tjera lokale. `labels.php` duhet të dërgojë POST te endpoint-i lokal; kjo ZIP përditëson vetëm Bridge-in.
+\n\n### v1.2.2 – printer page handling\n- Preferon formatin 40 × 30 mm në listën e madhësive të medias që ofron vetë driver-i.\n- Nëse nuk gjendet, kërkon madhësi custom 40 × 30 mm.\n- Përdor PageBounds reale të kthyer nga driver-i për çdo etiketë.\n- Shfaq formatin e zgjedhur në status pas printimit.\n
